@@ -5,10 +5,11 @@ For community support, please contact me on Discord: DougTheDruid#2784
 """
 from base64 import b64decode
 import pyglet
+from threading import Thread
 from pyglet.text import Label
 from pyglet.gl import Config
 from helpers import SOT_WINDOW, SOT_WINDOW_H, SOT_WINDOW_W, main_batch, \
-    version, logger, initialize_window
+    version, logger
 from sot_hack import SoTMemoryReader
 
 
@@ -28,7 +29,9 @@ def generate_all(_):
     re-populate all of the display objects if something entered the screen
     or render distance.
     """
-    smr.read_actors()
+    thread = Thread(target=smr.read_actors)
+    thread.start()
+    # smr.read_actors()
 
 
 def update_graphics(_):
@@ -80,7 +83,7 @@ if __name__ == '__main__':
     # Create an overlay window with Pyglet at the same size as our SoT Window
     window = pyglet.window.Window(SOT_WINDOW_W, SOT_WINDOW_H,
                                   vsync=False, style='overlay', config=config,
-                                  caption="DougTheDruid's ESP Framework")
+                                  caption="Vlads hack")
     hwnd = window._hwnd  # pylint: disable=protected-access
 
     # Move our window to the same location that our SoT Window is at
@@ -97,15 +100,23 @@ if __name__ == '__main__':
 
         # Update our player count Label & crew list
         if smr.crew_data:
+
             player_count.text = f"Player Count: {smr.crew_data.total_players}"
-            # crew_list.text = smr.crew_data.crew_str
+            crew_list.text = smr.crew_data.crew_str
+
+
+        halls.text = "" if smr.halls == 0 else str(smr.halls)
+
+        ships = ''
+        for ship in smr.ships:
+            if ship['distance'] > 100 and not ship['bot']:
+                ships += f"{'S ' if 'Sloop' in ship['image'] else 'B ' if 'Brigantine' in ship['image'] else 'G '}Ship - {ship['distance']}m \n"
+        ships_list.text = ships
+
 
         # Draw our main batch & FPS counter at the bottom left
         main_batch.draw()
-        fps_display.draw()
-
-    # Initializing the window for writing
-    init = initialize_window()
+        ## fps_display.draw()
 
     # We schedule an "update all" to scan all actors every 5seconds
     pyglet.clock.schedule_interval(generate_all, 5)
@@ -119,23 +130,31 @@ if __name__ == '__main__':
 
     # Adds an FPS counter at the bottom left corner of our pyglet window
     # Note: May not translate to actual FPS, but rather FPS of the program
-    fps_display = pyglet.window.FPSDisplay(window)
+    ##  fps_display = pyglet.window.FPSDisplay(window)
 
     # Our base player_count label in the top-right of our screen. Updated
     # in on_draw(). Use a default of "Initializing", which will update once the
     # hack is actually running
     player_count = Label("...Initializing Framework...",
-                         x=SOT_WINDOW_W * 0.85,
-                         y=SOT_WINDOW_H * 0.9, batch=main_batch)
+                         x=SOT_WINDOW_W * 0.007,
+                         y=SOT_WINDOW_H * 0.94, batch=main_batch, font_name='Times New Roman')
 
     # The label for showing all players on the server under the count
     # This purely INITIALIZES it does not inherently update automatically
-    if False:  # pylint: disable=using-constant-test
-        crew_list = Label("", x=SOT_WINDOW_W * 0.85,
-                          y=(SOT_WINDOW_H-25) * 0.9, batch=main_batch, width=300,
-                          multiline=True)
-        # Note: The width of 300 is the max pixel width of a single line
-        # before auto-wrapping the text to the next line. Updated in on_draw()
+    # pylint: disable=using-constant-test
+    crew_list = Label("", x=SOT_WINDOW_W * 0.004,
+                      y=(SOT_WINDOW_H-25) * 0.94, batch=main_batch, width=300,
+                      multiline=True, font_name='Times New Roman')
+    # Note: The width of 300 is the max pixel width of a single line
+    # before auto-wrapping the text to the next line. Updated in on_draw()
+
+    halls = Label("",
+                    x=SOT_WINDOW_W * 0.492, y=SOT_WINDOW_H * 0.008,
+                    batch=main_batch, font_size=40, color=(255,0,0,255))
+
+    ships_list = Label("", x=SOT_WINDOW_W * 0.91,
+                      y=SOT_WINDOW_H * 0.97, batch=main_batch, width=130,
+                      multiline=True, font_name='Times New Roman')
 
     # Runs our application, targeting a specific refresh rate (1/60 = 60fps)
     pyglet.app.run(interval=1/FPS_TARGET)

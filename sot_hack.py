@@ -7,10 +7,13 @@ For community support, please contact me on Discord: DougTheDruid#2784
 import struct
 import logging
 from memory_helper import ReadMemory
-from mapping import ship_keys
+from mapping import ship_keys, waters, hull_keys
 from helpers import OFFSETS, CONFIG, logger
 from Modules.ship import Ship
 from Modules.crews import Crews
+from Modules.sink import Sink
+from Modules.holes import Holes
+from Modules.players import Player
 
 
 class SoTMemoryReader:
@@ -67,8 +70,11 @@ class SoTMemoryReader:
         self.my_coords = self._coord_builder(self.u_local_player)
         self.my_coords['fov'] = 90
 
+        self.halls = 0
+
         self.actor_name_map = {}
         self.server_players = []
+        self.ships = []
         self.display_objects = []
         self.crew_data = None
 
@@ -133,6 +139,7 @@ class SoTMemoryReader:
 
         return coordinate_dict
 
+
     def read_actors(self):
         """
         Represents a full scan of every actor within our render distance.
@@ -153,6 +160,8 @@ class SoTMemoryReader:
 
         self.display_objects = []
         self.update_my_coords()
+
+        self.ships = []
 
         actor_raw = self.rm.read_bytes(self.u_level + 0xa0, 0xC)
         actor_data = struct.unpack("<Qi", actor_raw)
@@ -195,6 +204,11 @@ class SoTMemoryReader:
                 # if "Near" not in ship.name and ship.distance < 1720:
                 #     continue
                 # else:
+                self.ships.append({
+                    "bot": ship.is_bot,
+                    "distance": ship.distance,
+                    "image": ship.img_path
+                })
                 self.display_objects.append(ship)
 
             # If we have the crews data enabled in helpers.py and the name
@@ -202,5 +216,24 @@ class SoTMemoryReader:
             # data to generate information about people on the server
             # NOTE: This will NOT give us information on nearby players for the
             # sake of ESP
-            elif CONFIG.get('CREWS_ENABLED') and raw_name == "CrewService":
+            if CONFIG.get('CREWS_ENABLED') and raw_name == "CrewService":
                 self.crew_data = Crews(self.rm, actor_id, actor_address)
+
+            if CONFIG.get('WATER_PERCENTAGE') and raw_name in waters:
+                self.sink_data = Sink(self.rm, actor_id, actor_address, self.my_coords)
+                self.display_objects.append(self.sink_data)
+
+            if CONFIG.get('HULLS_COUNT') and raw_name in hull_keys:
+                hole = Holes(self.rm, actor_id, actor_address, self.my_coords)
+                print(self.halls)
+                self.halls = hole.is_active_hall()
+
+            if CONFIG.get('PLAYER_CHARACTER') and raw_name == "BP_PlayerPirate_C":
+                player = Player(self.rm, actor_id, actor_address, self.my_coords, raw_name)
+                self.display_objects.append(player)
+
+
+
+
+
+

@@ -14,7 +14,10 @@ from pyglet.text import Label
 # True=Enabled & False=Disabled for each relevant config items
 CONFIG = {
     "CREWS_ENABLED": True,
-    "SHIPS_ENABLED": False
+    "SHIPS_ENABLED": True,
+    "WATER_PERCENTAGE": True,
+    "HULLS_COUNT": True,
+    "PLAYER_CHARACTER": True
 }
 
 # Used to track unique crews
@@ -177,13 +180,3 @@ def calculate_distance(obj_to: dict, obj_from: dict) -> int:
     return int(math.sqrt((obj_to.get("x") - obj_from.get("x")) ** 2 +
                          (obj_to.get("y") - obj_from.get("y")) ** 2 +
                          (obj_to.get("z") - obj_from.get("z")) ** 2))
-
-
-def initialize_window():
-    """
-    Initializes our window with a given label
-    """
-    b_label = Label(b64decode('RG91Z1RoZURydWlkJ3MgRVNQIEZyYW1ld29yaw==').decode("utf-8"),
-                    x=SOT_WINDOW_W - 537, y=10, font_size=24, bold=True,
-                    color=(127, 127, 127, 65), batch=main_batch)
-    return b_label

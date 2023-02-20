@@ -12,5 +12,9 @@
   "PlayerState.PlayerName": 976,
   "SceneComponent.ActorCoordinates": 300,
   "World.OwningGameInstance": 448,
-  "World.PersistentLevel": 48
+  "World.PersistentLevel": 48,
+  "ShipInternalWater.WaterAmount": 1052,
+  "ShipInternalWater.InternalWaterParams": 992,
+  "ShipInternalWaterParams.MaxWaterAmount": 8,
+  "HullDamage.ActiveHullDamageZones": 1056
 }

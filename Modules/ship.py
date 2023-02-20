@@ -5,10 +5,12 @@
 
 from pyglet.text import Label
 from pyglet.shapes import Circle
+import pyglet
 from helpers import calculate_distance, object_to_screen, main_batch, \
      TEXT_OFFSET_X, TEXT_OFFSET_Y
 from mapping import ships
 from Modules.display_object import DisplayObject
+from helpers import OFFSETS
 
 SHIP_COLOR = (100, 0, 0)  # The color we want the indicator circle to be
 CIRCLE_SIZE = 10  # The size of the indicator circle we want
@@ -52,36 +54,50 @@ class Ship(DisplayObject):
         self.coords = self._coord_builder(self.actor_root_comp_ptr,
                                           self.coord_offset)
         self.distance = calculate_distance(self.coords, self.my_coords)
+        self.is_bot = True if "AI" in self.raw_name else False
 
         self.screen_coords = object_to_screen(self.my_coords, self.coords)
 
         # All of our actual display information & rendering
+        self.img_path = ships.get(self.raw_name).get('Icon')
+        self.image = pyglet.image.load(self.img_path)
         self.color = SHIP_COLOR
         self.text_str = self._built_text_string()
         self.text_render = self._build_text_render()
         self.icon = self._build_circle_render()
 
+
         # Used to track if the display object needs to be removed
         self.to_delete = False
 
-    def _build_circle_render(self) -> Circle:
+    def _build_circle_render(self):
         """
         Creates a circle located at the screen coordinates (if they exist).
         Uses the color specified in our globals w/ a size of 10px radius.
         Assigns the object to our batch & group
         """
-        if self.screen_coords:
-            return Circle(self.screen_coords[0], self.screen_coords[1],
-                          CIRCLE_SIZE, color=self.color, batch=main_batch)
 
-        return Circle(0, 0, 10, color=self.color, batch=main_batch)
+        if self.screen_coords:
+            icon = pyglet.sprite.Sprite(self.image, batch=main_batch)
+
+            icon.x = self.screen_coords[0] + TEXT_OFFSET_X
+            icon.y = self.screen_coords[1] + TEXT_OFFSET_X
+            return icon
+
+        return pyglet.sprite.Sprite(self.image, batch=main_batch)
+
+
 
     def _built_text_string(self) -> str:
         """
         Generates a string used for rendering. Separate function in the event
         you need to add more data (Sunk %, hole count, etc)
         """
-        return f"{self.name} - {self.distance}m"
+        if "AI" in self.raw_name:
+            return f"       AI - {self.distance}m"
+        else:
+            return f"       - {self.distance}m"
+
 
     def _build_text_render(self) -> Label:
         """
@@ -97,7 +113,7 @@ class Ship(DisplayObject):
             return Label(self.text_str,
                          x=self.screen_coords[0] + TEXT_OFFSET_X,
                          y=self.screen_coords[1] + TEXT_OFFSET_Y,
-                         batch=main_batch)
+                         batch=main_batch, font_name='Times New Roman')
 
         return Label(self.text_str, x=0, y=0, batch=main_batch)
 
@@ -127,24 +143,27 @@ class Ship(DisplayObject):
 
         self.screen_coords = object_to_screen(self.my_coords, self.coords)
 
-        if self.screen_coords:
+        if self.screen_coords and not self.distance <= 20:
             # Ships have two actors dependant on distance. This switches them
             # seamlessly at 1750m
-            if "Near" in self.name and new_distance > 1750:
+            if "Proxy" not in self.raw_name and new_distance > 1750:
                 self.text_render.visible = False
                 self.icon.visible = False
-            elif "Near" not in self.name and new_distance < 1750:
+            elif "Proxy" in self.raw_name and new_distance < 1750:
                 self.text_render.visible = False
                 self.icon.visible = False
             else:
                 self.text_render.visible = True
                 self.icon.visible = True
 
+
+
+
             # Update the position of our circle and text
             self.icon.x = self.screen_coords[0]
-            self.icon.y = self.screen_coords[1]
+            self.icon.y = self.screen_coords[1] + 80
             self.text_render.x = self.screen_coords[0] + TEXT_OFFSET_X
-            self.text_render.y = self.screen_coords[1] + TEXT_OFFSET_Y
+            self.text_render.y = self.screen_coords[1] + TEXT_OFFSET_Y + 100
 
             # Update our text to reflect out new distance
             self.distance = new_distance

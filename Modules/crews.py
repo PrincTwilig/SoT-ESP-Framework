@@ -3,7 +3,7 @@
 @Source https://github.com/DougTheDruid/SoT-ESP-Framework
 """
 
-import struct
+import struct, array
 from helpers import OFFSETS, crew_tracker
 from Modules.display_object import DisplayObject
 
