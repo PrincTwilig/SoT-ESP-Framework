@@ -1,15 +1,10 @@
-"""
-@Author https://github.com/DougTheDruid
-@Source https://github.com/DougTheDruid/SoT-ESP-Framework
-"""
-
 import struct
-import abc
-from helpers import OFFSETS
+from abc import ABCMeta, abstractmethod
+from helpers import OFFSETS, calculate_distance, object_to_screen
 from memory_helper import ReadMemory
 
 
-class DisplayObject(metaclass=abc.ABCMeta):
+class DisplayObject(metaclass=ABCMeta):
     """
     Parent class to objects like Ship's. Responsible for the base functionality
     of pulling data from our memory objects. These are typically identical
@@ -17,7 +12,7 @@ class DisplayObject(metaclass=abc.ABCMeta):
     considered "common" and reduces redundant code.
     """
 
-    def __init__(self, memory_reader: ReadMemory):
+    def __init__(self, memory_reader: ReadMemory, actor_id: int, address: int, my_coords: dict, raw_name: str):
         """
         Some of our DisplayObject calls need to make memory reads, so we will
         ser out memory reader as a class variable.
@@ -27,6 +22,20 @@ class DisplayObject(metaclass=abc.ABCMeta):
         self.rm = memory_reader
         self.coord_offset = OFFSETS.get('SceneComponent.ActorCoordinates')
         self.rotation_offset = OFFSETS.get('SceneComponent.RelativeRotation')
+
+        self.actor_id = actor_id
+        self.address = address
+        self.actor_root_comp_ptr = self._get_root_comp_address(address)
+        self.my_coords = my_coords
+        self.raw_name = raw_name
+
+        self.coords = self._coord_builder(self.actor_root_comp_ptr,
+                                    self.coord_offset)
+        self.distance = calculate_distance(self.coords, self.my_coords)
+        self.screen_coords = object_to_screen(self.my_coords, self.coords)
+
+
+        self.to_delete = False
 
     def _get_actor_id(self, address: int) -> int:
         """
@@ -65,19 +74,21 @@ class DisplayObject(metaclass=abc.ABCMeta):
         unpacked = struct.unpack("<ffffff", actor_bytes)
 
         coordinate_dict = {"x": unpacked[0] / 100, "y": unpacked[1] / 100,
-                           "z": unpacked[2] / 100}
+                           "z": unpacked[2] / 100, "pitch": unpacked[3], "yaw": unpacked[4], "roll": unpacked[5]}
         return coordinate_dict
-    
-    def _rotation_builder(self, root_comp_ptr: int, offset: int) -> dict:
-        actor_bytes = self.rm.read_bytes(root_comp_ptr + offset, 24)
-        unpacked = struct.unpack("<ffffff", actor_bytes)
 
-        rotation_dict = {'pitch': unpacked[3], 'yaw': unpacked[4], 'rotation': unpacked[5]}
-        return rotation_dict
-
-    @abc.abstractmethod
-    def update(self, my_coords):
+    def _abs_update(self, my_coords: dict):
         """
         Required implementation method that we can call to update
         the objects data in a quick fashion vs scanning every actor.
         """
+        if abs(self._get_actor_id(self.address) - self.actor_id) > 50:
+            self.to_delete = True
+            return
+        
+        self.my_coords = my_coords
+        self.coords = self._coord_builder(self.actor_root_comp_ptr,
+                                          self.coord_offset)
+        self.distance = calculate_distance(self.coords, self.my_coords)
+
+        self.screen_coords = object_to_screen(self.my_coords, self.coords)

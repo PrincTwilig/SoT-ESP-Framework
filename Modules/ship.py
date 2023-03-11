@@ -10,21 +10,11 @@ from Modules.display_object import DisplayObject
 
 class Ship(DisplayObject):
     def __init__(self, memory_reader, actor_id, address, my_coords, raw_name):
-        super().__init__(memory_reader)
-
-        self.actor_id = actor_id
-        self.address = address
-        self.actor_root_comp_ptr = self._get_root_comp_address(address)
-        self.my_coords = my_coords
-        self.raw_name = raw_name
+        super().__init__(memory_reader, actor_id, address, my_coords, raw_name)
 
         self.name = ships.get(self.raw_name).get("Name")
-        self.coords = self._coord_builder(self.actor_root_comp_ptr,
-                                          self.coord_offset)
-        self.distance = calculate_distance(self.coords, self.my_coords)
-        self.is_bot = True if "AI" in self.raw_name else False
 
-        self.screen_coords = object_to_screen(self.my_coords, self.coords)
+        self.is_bot = True if "AI" in self.raw_name else False
 
         self.img_path = ships.get(self.raw_name).get('Icon')
         self.image = pyglet.image.load(self.img_path)
@@ -41,7 +31,7 @@ class Ship(DisplayObject):
         self.last_coords = [self.coords]
 
 
-        self.to_delete = False
+        
 
     def build_icon_render(self) -> pyglet.sprite.Sprite:
 
@@ -94,23 +84,13 @@ class Ship(DisplayObject):
         return Label(self.text_str, x=0, y=0, batch=main_batch)
 
     def update(self, my_coords: dict):
+        self._abs_update(my_coords)
         if "Proxy" not in self.raw_name and self.distance > 1750:
             self.to_delete = True
             return
         if "Proxy" in self.raw_name and self.distance < 1750:
             self.to_delete = True
             return
-        if abs(self._get_actor_id(self.address) - self.actor_id) > 20:
-            self.to_delete = True
-            return
-
-
-        self.my_coords = my_coords
-        self.coords = self._coord_builder(self.actor_root_comp_ptr,
-                                          self.coord_offset)
-        self.distance = calculate_distance(self.coords, self.my_coords)
-
-        self.screen_coords = object_to_screen(self.my_coords, self.coords)
 
         now = time.monotonic()
         if now - self.last_check[-1] >= 0.5:

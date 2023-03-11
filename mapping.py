@@ -53,7 +53,7 @@ ships = {
 
 ship_keys = set(ships.keys())
 
-waters = {
+sink = {
     "BP_SmallShip_StandardHull_InternalShipWater_C": {
         "name": "Small Ship Water",
     },
@@ -65,7 +65,7 @@ waters = {
     },
 }
 
-water_keys = set(waters.keys())
+sink_keys = set(sink.keys())
 
 
 hulls = {
@@ -90,3 +90,34 @@ cannons = {
 }
 
 cannons_keys = set(cannons.keys())
+
+seagulls = {
+    "BP_Seagull01_8POI_C": {
+        "Name": "Regular seagulls"
+    },
+    "BP_Seagull01_32POI_Circling_Shipwreck_C": {
+        "Name": "Shipwreck seagulls"
+    },
+    "BP_Seagull01_8POI_LostShipments_C": {
+        "Name": "LostShipment seagulls"
+    },
+    "BP_Seagulls_Barrels_BarrelsOfPlenty_C": {
+        "Name": "Regular seagulls"
+    },
+    "BP_BuoyantCannonballBarrel_LockedToWater_C": {
+        "Name": "Cannon barrels"
+    },
+    "BP_Seagulls_Barrels_C": {
+        "Name": "Regular seagulls"
+    }
+}
+
+seagulls_keys = set(seagulls.keys())
+
+players = {
+    "BP_PlayerPirate_C": {
+        "Name": "Player"
+    }
+}
+
+players_keys = set(players.keys())

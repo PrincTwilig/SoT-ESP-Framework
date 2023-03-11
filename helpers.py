@@ -1,24 +1,10 @@
-"""
-@Author https://github.com/DougTheDruid
-@Source https://github.com/DougTheDruid/SoT-ESP-Framework
-"""
-
 import math
 import json
 import logging
-from base64 import b64decode
+from dataclasses import dataclass, field
 import win32gui
 from pyglet.graphics import Batch
 from pyglet.text import Label
-
-# True=Enabled & False=Disabled for each relevant config items
-CONFIG = {
-    "CREWS_ENABLED": True,
-    "SHIPS_ENABLED": True,
-    "WATER_PERCENTAGE": True,
-    "HULLS_COUNT": True,
-    "PLAYER_CHARACTER": True
-}
 
 # Used to track unique crews
 crew_tracker = {}
@@ -54,6 +40,18 @@ with open("offsets.json") as infile:
     OFFSETS = json.load(infile)
 
 
+
+@dataclass
+class GameData:
+    ships: list = field(default_factory=list)
+    cannons: list = field(default_factory=list)
+    seagulls: list = field(default_factory=list)
+    players: list = field(default_factory=list)
+    local_ship: any = False
+
+
+
+
 def dot(array_1: tuple, array_2: tuple) -> float:
     """
     Python-converted version of Gummy's External SoT v2 vMatrix Dot method (No
@@ -72,19 +70,7 @@ def dot(array_1: tuple, array_2: tuple) -> float:
 
 
 def object_to_screen(player: dict, actor: dict) -> tuple:
-    """
-    Using the player and an actors coordinates, determine where on the screen
-    an object should be displayed. Assumes your screen is 2560x1440
 
-    Python-converted version of Gummy's External SoT v2 WorldToScreen method:
-    (No Longer Avail; Need Source)
-
-    :param player: The player coordinate dictionary
-    :param actor: An actor coordinate dictionary
-    :rtype: tuple
-    :return: tuple of x and y screen coordinates to display where the actor is
-    on screen
-    """
     try:
         player_camera = (player.get("cam_x"), player.get("cam_y"),
                          player.get("cam_z"))
@@ -101,8 +87,7 @@ def object_to_screen(player: dict, actor: dict) -> tuple:
                          dot(v_delta, v_axis_z),
                          dot(v_delta, v_axis_x)]
 
-        # Credit https://github.com/AlexBurneikis
-        # No valid screen coordinates if its behind us
+
         if v_transformed[2] < 1.0:
             return False
 

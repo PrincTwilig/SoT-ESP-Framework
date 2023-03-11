@@ -1,11 +1,9 @@
-import math
 import struct
 import logging
 from memory_helper import ReadMemory
-from mapping import ship_keys, waters, hull_keys, cannons_keys
-from helpers import OFFSETS, CONFIG, logger, calculate_distance
+from mapping import ship_keys, sink_keys, hull_keys, cannons_keys, seagulls_keys, players_keys
+from helpers import OFFSETS, logger, calculate_distance, GameData
 from Modules.ship import Ship
-from Modules.crews import Crews
 from Modules.sink import Sink
 from Modules.holes import Holes
 from Modules.players import Player
@@ -14,24 +12,8 @@ from Modules.seagull import Seagull
 
 
 class SoTMemoryReader:
-    """
-    Wrapper class to handle reading data from the game, parsing what is
-    important, and returning it to be shown by pyglet
-    """
 
     def __init__(self):
-        """
-        Upon initialization of this object, we want to find the base address
-        for the SoTGame.exe, then begin to load in the static addresses for the
-        uWorld, gName, gObject, and uLevel objects.
-
-        We also poll the local_player object to get a first round of coords.
-        When running read_actors, we update the local players coordinates
-        using the camera-manager object
-
-        Also initialize a number of class variables which help us cache some
-        basic information
-        """
         self.rm = ReadMemory("SoTGame.exe")
         base_address = self.rm.base_address
         logging.info(f"Process ID: {self.rm.pid}")
@@ -75,17 +57,14 @@ class SoTMemoryReader:
         self.halls_data = []
         self.sink_data = []
         self.players = []
-        self.display_objects = []
         self.crew_data = None
         self.local_ship = False
+        self.display_objects = []
+
+        self.data = GameData()
+
 
     def _load_local_player(self) -> int:
-        """
-        Returns the local player object out of uWorld.UGameInstance.
-        Used to get the players coordinates before reading any actors
-        :rtype: int
-        :return: Memory address of the local player object
-        """
         game_instance = self.rm.read_ptr(
             self.world_address + OFFSETS.get('World.OwningGameInstance')
         )
@@ -95,11 +74,6 @@ class SoTMemoryReader:
         return self.rm.read_ptr(local_player)
 
     def update_my_coords(self):
-        """
-        Function to update the players coordinates and camera information
-        storing that new info back into the my_coords field. Necessary as
-        we dont always run a full scan and we need a way to update ourselves
-        """
         manager = self.rm.read_ptr(
             self.player_controller + OFFSETS.get('PlayerController.CameraManager')
         )
@@ -111,17 +85,7 @@ class SoTMemoryReader:
 
     def _coord_builder(self, actor_address: int, offset=0x78, camera=True,
                        fov=False) -> dict:
-        """
-        Given a specific actor, loads the coordinates for that actor given
-        a number of parameters to define the output
-        :param int actor_address: Actors base memory address
-        :param int offset: Offset from actor address to beginning of coords
-        :param bool camera: If you want the camera info as well
-        :param bool fov: If you want the FoV info as well
-        :rtype: dict
-        :return: A dictionary containing the coordinate information
-        for a specific actor
-        """
+
         if fov:
             actor_bytes = self.rm.read_bytes(actor_address + offset, 44)
             unpacked = struct.unpack("<ffffff16pf", actor_bytes)
@@ -175,6 +139,9 @@ class SoTMemoryReader:
         Then our main game loop updates those objects
         """
 
+        self.halls_data = []
+        self.sink_data = []
+
         self.update_my_coords()
 
         actor_raw = self.rm.read_bytes(self.u_level + 0xa0, 0xC)
@@ -182,14 +149,10 @@ class SoTMemoryReader:
 
         level_actors_raw = self.rm.read_bytes(actor_data[0], actor_data[1] * 8)
 
-        self.server_players = []
-        self.local_ship = None
-        self.display_objects = []
-
         for raw_name, actor_address, actor_id in self.actor_info_generator(actor_data, level_actors_raw):
 
-            if raw_name == "BP_Cannon_ShipPartMMC_C":
-                cannon = Cannons(self.rm, actor_id, actor_address, self.my_coords, raw_name, self.player_controller)
+            if raw_name in cannons_keys:
+                cannon = Cannons(self.rm, actor_id, actor_address, self.my_coords, raw_name)
                 if cannon.address not in [actor.address for actor in self.cannons]:
                     existing_actor_ids = [c.actor_id for c in self.cannons]
                     while cannon.actor_id in existing_actor_ids:
@@ -197,7 +160,7 @@ class SoTMemoryReader:
                     self.cannons.append(cannon)
 
 
-            elif raw_name == "BP_Seagull01_8POI_C" or raw_name == "BP_Seagull01_32POI_Circling_Shipwreck_C" or raw_name == "BP_Seagull01_8POI_LostShipments_C" or raw_name == "BP_Seagulls_Barrels_BarrelsOfPlenty_C" or raw_name == "BP_BuoyantCannonballBarrel_LockedToWater_C" or raw_name == "BP_Seagulls_Barrels_C":
+            elif raw_name in seagulls_keys:
                 seagull = Seagull(self.rm, actor_id, actor_address, self.my_coords, raw_name)
                 if seagull.address not in[actor.address for actor in self.seagulls]:
                     existing_actor_ids = [c.actor_id for c in self.seagulls]
@@ -208,7 +171,7 @@ class SoTMemoryReader:
                     
 
 
-            elif CONFIG.get('SHIPS_ENABLED') and raw_name in ship_keys:
+            elif raw_name in ship_keys:
                 ship = Ship(self.rm, actor_id, actor_address, self.my_coords, raw_name)
                 if ship.address not in [actor.address for actor in self.ships]:
                     existing_actor_ids = [s.actor_id for s in self.ships]
@@ -216,20 +179,17 @@ class SoTMemoryReader:
                         ship.actor_id += 1
                     self.ships.append(ship)
 
-            elif CONFIG.get('CREWS_ENABLED') and raw_name == "CrewService":
-                self.crew_data = Crews(self.rm, actor_id, actor_address)
-
-            elif CONFIG.get('WATER_PERCENTAGE') and raw_name in waters:
-                sink = Sink(self.rm, actor_id, actor_address, self.my_coords)
+            elif raw_name in sink_keys:
+                sink = Sink(self.rm, actor_id, actor_address, self.my_coords, raw_name)
                 if sink.actor_id not in [actor.actor_id for actor in self.sink_data]:
                     self.sink_data.append(sink)
 
-            elif CONFIG.get('HULLS_COUNT') and raw_name in hull_keys:
-                holes = Holes(self.rm, actor_id, actor_address, self.my_coords)
+            elif raw_name in hull_keys:
+                holes = Holes(self.rm, actor_id, actor_address, self.my_coords, raw_name)
                 if holes.actor_id not in [actor.actor_id for actor in self.halls_data]:
                     self.halls_data.append(holes)
 
-            elif CONFIG.get('PLAYER_CHARACTER') and raw_name == "BP_PlayerPirate_C":
+            elif raw_name in players_keys:
                 player = Player(self.rm, actor_id, actor_address, self.my_coords, raw_name)
                 if player.actor_id not in [actor.actor_id for actor in self.players]:
                     self.players.append(player)
