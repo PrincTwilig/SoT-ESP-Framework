@@ -19,4 +19,5 @@ class Player(DisplayObject):
             return icon
 
     def update(self, my_coords: dict):
-        self._abs_update(my_coords)
+        if self._abs_update(my_coords):
+            return

@@ -42,11 +42,19 @@ def update_graphics(_):
             to_remove.append(actor)
 
     for removable in to_remove:
-        smr.display_objects.remove(removable)
-        for arr in [smr.ships, smr.sink_data, smr.halls_data, smr.players, smr.cannons, smr.seagulls]:
-            if removable in arr:
-                arr.remove(removable)
-                break
+        if removable in smr.data.ships:
+            smr.data.ships.remove(removable)
+        elif removable in smr.sink_data:
+            smr.sink_data.remove(removable)
+        elif removable in smr.halls_data:
+            smr.halls_data.remove(removable)
+        elif removable in smr.data.players:
+            smr.data.players.remove(removable)
+        elif removable in smr.data.cannons:
+            smr.data.cannons.remove(removable)
+        elif removable in smr.data.seagulls:
+            smr.data.seagulls.remove(removable)
+
 
 
 if __name__ == '__main__':
@@ -63,10 +71,8 @@ if __name__ == '__main__':
     window = pyglet.window.Window(SOT_WINDOW_W, SOT_WINDOW_H,
                                   vsync=False, style='overlay', config=config,
                                   caption="Vlads hack")
-    ships = []
-    players = []
+
     seagull_sprites = {}
-    seagulls = []
     speed_x = 0
     speed_y = 0
 
@@ -81,26 +87,40 @@ if __name__ == '__main__':
         global speed_x
         global speed_y
 
+        smr.local_ship = False
+        for ship in smr.data.ships:
+            if ship.distance < 20:
+                smr.local_ship = ship
+                break
 
-        if smr.ships:
-            ships_list.text = get_ship_list_string(smr.ships)
+        # ships around data
+        if smr.data.ships:
+            ships_list.text = get_ship_list_string(smr.data.ships)
         
-        if smr.local_ship and smr.local_ship.sink_data:
-            health_bar.scale_x = smr.local_ship.sink_data.water_info
+        # local ship health
+        if smr.local_ship:
+            # health bar
+            if smr.local_ship.sink_data:
+                health_bar.scale_x = smr.local_ship.sink_data.water_info
 
-            health_bar_frame.visible = True
-            health_bar.visible = True
+                health_bar_frame.visible = True
+                health_bar.visible = True
 
-            if smr.local_ship.sink_data.water_info > 0.85:
+                if smr.local_ship.sink_data.water_info > 0.85:
+                    health_bar_frame.visible = False
+                    health_bar.visible = False
+                elif smr.local_ship.sink_data.water_info > 0.6:
+                    health_bar.color = (0, 255, 0)
+                elif smr.local_ship.sink_data.water_info > 0.3:
+                    health_bar.color = (255, 255, 0)
+                else:
+                    health_bar.color = (255, 0, 0)
+
+            else:
                 health_bar_frame.visible = False
                 health_bar.visible = False
-            elif smr.local_ship.sink_data.water_info > 0.6:
-                health_bar.color = (0,255,0)
-            elif smr.local_ship.sink_data.water_info > 0.3:
-                health_bar.color = (255, 255, 0)
-            else:
-                health_bar.color = (255, 255, 0)
-
+            
+            # halls count
             if smr.local_ship.halls:
                 current_ship_halls.text = str(smr.local_ship.halls.hulls_count if smr.local_ship.halls.hulls_count else "")
             else:
@@ -111,10 +131,11 @@ if __name__ == '__main__':
             current_ship_halls.text = ''
 
 
-        for cannon in smr.cannons:
+        # cannon prediction system
+        for cannon in smr.data.cannons:
             if cannon.is_on_cannon:
                 
-                ships = [ship for ship in smr.ships if ship != smr.local_ship]
+                ships = [ship for ship in smr.data.ships if ship != smr.local_ship]
 
                 if ships:
                     closest_ship = min(ships, key=lambda obj: obj.distance)
@@ -150,8 +171,8 @@ if __name__ == '__main__':
                 shot_line.visible = False
 
 
-        # Loop through each seagull in smr.seagulls
-        for seagull in smr.seagulls:
+        # seagulls manager
+        for seagull in smr.data.seagulls:
             # Check if seagull already has a sprite
             if seagull.address in seagull_sprites and SEAGULLS:
                 # Update the sprite's coordinates
@@ -180,11 +201,9 @@ if __name__ == '__main__':
         # Loop through each seagull in seagull_sprites
         for address, seagull_sprite in list(seagull_sprites.items()):
             # Check if the seagull is not in smr.seagulls
-            if address not in [actor.address for actor in smr.seagulls]:
+            if address not in [actor.address for actor in smr.data.seagulls]:
                 # Remove the seagull and its sprite from the dictionary
                 seagull_sprites.pop(address)
-
-        seagulls = list(seagull_sprites.values())
 
 
         if is_game_focused():

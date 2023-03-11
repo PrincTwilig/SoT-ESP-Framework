@@ -31,7 +31,7 @@ class Cannons(DisplayObject):
     
     def _get_shot_distance(self):
         v0 = self._get_projectile_speed()
-        g = self._get_projectile_gravity()
+        g = self._get_projectile_gravity() 
 
         return ((v0**2 * math.sin(2*math.radians(self.my_coords['cam_x']) if 2*math.radians(self.my_coords['cam_x']) > 0 else 0.01)) / g)
     
@@ -78,7 +78,9 @@ class Cannons(DisplayObject):
 
 
     def update(self, my_coords: dict):
-        self._abs_update(my_coords)
+        if self._abs_update(my_coords):
+            return
+        
 
 
         self.is_on_cannon = self._is_on_cannon()

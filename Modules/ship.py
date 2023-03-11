@@ -84,7 +84,8 @@ class Ship(DisplayObject):
         return Label(self.text_str, x=0, y=0, batch=main_batch)
 
     def update(self, my_coords: dict):
-        self._abs_update(my_coords)
+        if self._abs_update(my_coords):
+            return
         if "Proxy" not in self.raw_name and self.distance > 1750:
             self.to_delete = True
             return

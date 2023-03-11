@@ -84,7 +84,7 @@ class DisplayObject(metaclass=ABCMeta):
         """
         if abs(self._get_actor_id(self.address) - self.actor_id) > 50:
             self.to_delete = True
-            return
+            return True
         
         self.my_coords = my_coords
         self.coords = self._coord_builder(self.actor_root_comp_ptr,

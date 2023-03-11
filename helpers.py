@@ -1,3 +1,6 @@
+from __future__ import division, print_function
+import sys
+
 import math
 import json
 import logging
@@ -47,7 +50,7 @@ class GameData:
     cannons: list = field(default_factory=list)
     seagulls: list = field(default_factory=list)
     players: list = field(default_factory=list)
-    local_ship: any = False
+
 
 
 
@@ -173,3 +176,5 @@ def is_game_focused():
 
     foreground_handle = win32gui.GetForegroundWindow()
     return handle == foreground_handle
+
+

@@ -42,6 +42,8 @@ class Sink(DisplayObject):
         return frame
 
 
+
+
     def _build_text_render(self) -> Label:
         if self.screen_coords:
             return Label(self.built_text_string(),
@@ -51,8 +53,9 @@ class Sink(DisplayObject):
 
         return Label(self.built_text_string(), x=0, y=0, batch=main_batch)
 
-    def update(self, my_coords):
-        self._abs_update(my_coords)
+    def update(self, my_coords):  # pylint: disable=unused-argument
+        if self._abs_update(my_coords):
+            return
 
         self.water_info = self._get_sink_info()
         self.sink_percent_string = self.built_text_string()

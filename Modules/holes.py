@@ -19,6 +19,7 @@ class Holes(DisplayObject):
 
 
     def update(self, my_coords):
-        self._abs_update(my_coords)
+        if self._abs_update(my_coords):
+            return
 
         self.hulls_count = self._get_hulls_info()

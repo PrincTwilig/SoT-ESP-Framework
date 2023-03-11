@@ -11,6 +11,16 @@ from Modules.cannons import Cannons
 from Modules.seagull import Seagull
 
 
+ACTOR_CLASSES = {
+    **({raw_name: Cannons for raw_name in cannons_keys}),
+    **({raw_name: Seagull for raw_name in seagulls_keys}),
+    **({raw_name: Ship for raw_name in ship_keys}),
+    **({raw_name: Sink for raw_name in sink_keys}),
+    **({raw_name: Holes for raw_name in hull_keys}),
+    **({raw_name: Player for raw_name in players_keys})
+}
+
+
 class SoTMemoryReader:
 
     def __init__(self):
@@ -51,13 +61,6 @@ class SoTMemoryReader:
 
         self.actor_name_map = {}
         self.server_players = []
-        self.ships = []
-        self.cannons = []
-        self.seagulls = []
-        self.halls_data = []
-        self.sink_data = []
-        self.players = []
-        self.crew_data = None
         self.local_ship = False
         self.display_objects = []
 
@@ -149,65 +152,40 @@ class SoTMemoryReader:
 
         level_actors_raw = self.rm.read_bytes(actor_data[0], actor_data[1] * 8)
 
+        # search all interesting actors
         for raw_name, actor_address, actor_id in self.actor_info_generator(actor_data, level_actors_raw):
-
-            if raw_name in cannons_keys:
-                cannon = Cannons(self.rm, actor_id, actor_address, self.my_coords, raw_name)
-                if cannon.address not in [actor.address for actor in self.cannons]:
-                    existing_actor_ids = [c.actor_id for c in self.cannons]
-                    while cannon.actor_id in existing_actor_ids:
-                        cannon.actor_id += 1
-                    self.cannons.append(cannon)
+            actor_class = ACTOR_CLASSES.get(raw_name, False)
+            if actor_class and actor_address not in [act.address for act in self.display_objects]:
+                actor = actor_class(self.rm, actor_id, actor_address, self.my_coords, raw_name)
+                while actor.actor_id in [act.actor_id for act in self.display_objects]:
+                    actor.actor_id += 1
+                self.display_objects.append(actor)
 
 
-            elif raw_name in seagulls_keys:
-                seagull = Seagull(self.rm, actor_id, actor_address, self.my_coords, raw_name)
-                if seagull.address not in[actor.address for actor in self.seagulls]:
-                    existing_actor_ids = [c.actor_id for c in self.seagulls]
-                    while seagull.actor_id in existing_actor_ids:
-                        seagull.actor_id += 1
-                    self.seagulls.append(seagull)
-
-                    
-
-
-            elif raw_name in ship_keys:
-                ship = Ship(self.rm, actor_id, actor_address, self.my_coords, raw_name)
-                if ship.address not in [actor.address for actor in self.ships]:
-                    existing_actor_ids = [s.actor_id for s in self.ships]
-                    while ship.actor_id in existing_actor_ids:
-                        ship.actor_id += 1
-                    self.ships.append(ship)
-
-            elif raw_name in sink_keys:
-                sink = Sink(self.rm, actor_id, actor_address, self.my_coords, raw_name)
-                if sink.actor_id not in [actor.actor_id for actor in self.sink_data]:
-                    self.sink_data.append(sink)
-
-            elif raw_name in hull_keys:
-                holes = Holes(self.rm, actor_id, actor_address, self.my_coords, raw_name)
-                if holes.actor_id not in [actor.actor_id for actor in self.halls_data]:
-                    self.halls_data.append(holes)
-
-            elif raw_name in players_keys:
-                player = Player(self.rm, actor_id, actor_address, self.my_coords, raw_name)
-                if player.actor_id not in [actor.actor_id for actor in self.players]:
-                    self.players.append(player)
-
-            else:
-                continue
-
-            for ship in self.ships:
-                if ship.distance < 20:
-                    self.local_ship = ship
-                for sink in self.sink_data:
-                    if calculate_distance(ship.coords, sink.coords) <= 10:
-                        ship.add_sink_data(sink)
-                for hall in self.halls_data:
-                    if calculate_distance(ship.coords, hall.coords) <= 10:
-                        ship.add_halls_data(hall)
+        # put data into dataclass for easear access
+        for actor in self.display_objects:
+            if isinstance(actor, Ship) and actor.address not in [act.address for act in self.data.ships]:
+                self.data.ships.append(actor)
+            elif isinstance(actor, Sink) and actor.actor_id not in [act.actor_id for act in self.sink_data]:
+                self.sink_data.append(actor)
+            elif isinstance(actor, Holes) and actor.actor_id not in [act.actor_id for act in self.halls_data]:
+                self.halls_data.append(actor)
+            elif isinstance(actor, Player) and actor.actor_id not in [act.actor_id for act in self.data.players]:
+                self.data.players.append(actor)
+            elif isinstance(actor, Cannons) and actor.address not in [act.address for act in self.data.cannons]:
+                self.data.cannons.append(actor)
+            elif isinstance(actor, Seagull) and actor.address not in [act.address for act in self.data.seagulls]:
+                self.data.seagulls.append(actor)
 
 
-            for actor in self.ships + self.sink_data + self.halls_data + self.players + self.cannons + self.seagulls:
-                if actor.actor_id not in [actorr.actor_id for actorr in self.display_objects]:
-                    self.display_objects.append(actor)
+        # add sink manager and halls manager to its ship
+        for ship in self.data.ships:
+            for sink in self.sink_data:
+                if calculate_distance(ship.coords, sink.coords) <= 10:
+                    ship.add_sink_data(sink)
+            for hall in self.halls_data:
+                if calculate_distance(ship.coords, hall.coords) <= 10:
+                    ship.add_halls_data(hall)
+
+
+
