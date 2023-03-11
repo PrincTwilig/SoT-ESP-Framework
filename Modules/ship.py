@@ -1,46 +1,15 @@
-"""
-@Author https://github.com/DougTheDruid
-@Source https://github.com/DougTheDruid/SoT-ESP-Framework
-"""
-
 from pyglet.text import Label
-from pyglet.shapes import Circle
 import pyglet
+import time
+import math
 from helpers import calculate_distance, object_to_screen, main_batch, \
      TEXT_OFFSET_X, TEXT_OFFSET_Y
 from mapping import ships
 from Modules.display_object import DisplayObject
-from helpers import OFFSETS
-
-SHIP_COLOR = (100, 0, 0)  # The color we want the indicator circle to be
-CIRCLE_SIZE = 10  # The size of the indicator circle we want
 
 
 class Ship(DisplayObject):
-    """
-    Class to generate information for a ship object in memory
-    """
-
     def __init__(self, memory_reader, actor_id, address, my_coords, raw_name):
-        """
-        Upon initialization of this class, we immediately initialize the
-        DisplayObject parent class as well (to utilize common methods)
-
-        We then set our class variables and perform all of our info collecting
-        functions, like finding the actors base address and converting the
-        "raw" name to a more readable name per our Mappings. We also create
-        a circle and label and add it to our batch for display to the screen.
-
-        All of this data represents a "Ship". If you want to add more, you will
-        need to add another class variable under __init__ and in the update()
-        function
-
-        :param memory_reader: The SoT MemoryHelper Object we use to read memory
-        :param address: The address in which the AActor begins
-        :param my_coords: a dictionary of the local players coordinates
-        :param raw_name: The raw actor name used to translate w/ mapping.py
-        """
-        # Initialize our super-class
         super().__init__(memory_reader)
 
         self.actor_id = actor_id
@@ -49,7 +18,6 @@ class Ship(DisplayObject):
         self.my_coords = my_coords
         self.raw_name = raw_name
 
-        # Generate our Ship's info
         self.name = ships.get(self.raw_name).get("Name")
         self.coords = self._coord_builder(self.actor_root_comp_ptr,
                                           self.coord_offset)
@@ -58,24 +26,24 @@ class Ship(DisplayObject):
 
         self.screen_coords = object_to_screen(self.my_coords, self.coords)
 
-        # All of our actual display information & rendering
         self.img_path = ships.get(self.raw_name).get('Icon')
         self.image = pyglet.image.load(self.img_path)
-        self.color = SHIP_COLOR
-        self.text_str = self._built_text_string()
-        self.text_render = self._build_text_render()
-        self.icon = self._build_circle_render()
+        self.text_str = self.built_text_string()
+
+        self.sink_data = False
+        self.halls = False
 
 
-        # Used to track if the display object needs to be removed
+        self.speed = 0
+        self.speed_x = 0
+        self.speed_y = 0
+        self.last_check = [time.monotonic()]
+        self.last_coords = [self.coords]
+
+
         self.to_delete = False
 
-    def _build_circle_render(self):
-        """
-        Creates a circle located at the screen coordinates (if they exist).
-        Uses the color specified in our globals w/ a size of 10px radius.
-        Assigns the object to our batch & group
-        """
+    def build_icon_render(self) -> pyglet.sprite.Sprite:
 
         if self.screen_coords:
             icon = pyglet.sprite.Sprite(self.image, batch=main_batch)
@@ -87,90 +55,72 @@ class Ship(DisplayObject):
         return pyglet.sprite.Sprite(self.image, batch=main_batch)
 
 
+    def add_sink_data(self, sink_data):
+        self.sink_data = sink_data
 
-    def _built_text_string(self) -> str:
-        """
-        Generates a string used for rendering. Separate function in the event
-        you need to add more data (Sunk %, hole count, etc)
-        """
+    def add_halls_data(self, halls):
+        self.halls = halls
+
+    def built_text_string(self) -> str:
         if "AI" in self.raw_name:
-            return f"       AI - {self.distance}m"
+            return f"AI - {self.distance}m"
         else:
-            return f"       - {self.distance}m"
+            return f" - {self.distance}m"
+        
 
+    def _get_speed(self, now):
+        distance = math.sqrt((self.coords['x']-self.last_coords[0]['x'])**2 + (self.coords['y']-self.last_coords[0]['y'])**2)
+        speed = distance / (now - self.last_check[0])
 
-    def _build_text_render(self) -> Label:
-        """
-        Function to build our actual label which is sent to Pyglet. Sets it to
-        be located at the screen coordinated + our text_offsets from helpers.py
+        return speed
+    
+    def _get_directional_speed(self, now):
+        self.speed_x = (self.coords['x'] - self.last_coords[0]['x']) / (now - self.last_check[0])
+        self.speed_y = (self.coords['y'] - self.last_coords[0]['y']) / (now - self.last_check[0])
 
-        Assigns the object to our batch & group
+    def predict_coords(self, time_interval):
+        predicted_x = self.coords['x'] + self.speed_x * (time_interval)
+        predicted_y = self.coords['y'] + self.speed_y * (time_interval)
 
-        :rtype: Label
-        :return: What text we want displayed next to the ship
-        """
+        return {'x': predicted_x, 'y': predicted_y, 'z': self.coords['z']}
+
+    def build_text_render(self) -> Label:
         if self.screen_coords:
             return Label(self.text_str,
-                         x=self.screen_coords[0] + TEXT_OFFSET_X,
-                         y=self.screen_coords[1] + TEXT_OFFSET_Y,
-                         batch=main_batch, font_name='Times New Roman')
+                         x=self.screen_coords[0] + TEXT_OFFSET_X + 40,
+                         y=self.screen_coords[1] + TEXT_OFFSET_Y + 30,
+                         batch=main_batch, font_name='Times New Roman', multiline=True, width=100, font_size=14)
 
         return Label(self.text_str, x=0, y=0, batch=main_batch)
 
     def update(self, my_coords: dict):
-        """
-        A generic method to update all the interesting data about a ship
-        object, to be called when seeking to perform an update on the
-        Actor without doing a full-scan of all actors in the game.
-
-        1. Determine if the actor is what we expect it to be
-        2. See if any data has changed
-        3. Update the data if something has changed
-
-        In theory if all data is the same, we could *not* update our Label's
-        text, therefore saving resources. Not implemented, but a possibility
-        """
-        if self._get_actor_id(self.address) != self.actor_id:
+        if "Proxy" not in self.raw_name and self.distance > 1750:
             self.to_delete = True
-            self.icon.delete()
-            self.text_render.delete()
             return
+        if "Proxy" in self.raw_name and self.distance < 1750:
+            self.to_delete = True
+            return
+        if abs(self._get_actor_id(self.address) - self.actor_id) > 20:
+            self.to_delete = True
+            return
+
 
         self.my_coords = my_coords
         self.coords = self._coord_builder(self.actor_root_comp_ptr,
                                           self.coord_offset)
-        new_distance = calculate_distance(self.coords, self.my_coords)
+        self.distance = calculate_distance(self.coords, self.my_coords)
 
         self.screen_coords = object_to_screen(self.my_coords, self.coords)
 
-        if self.screen_coords and not self.distance <= 20:
-            # Ships have two actors dependant on distance. This switches them
-            # seamlessly at 1750m
-            if "Proxy" not in self.raw_name and new_distance > 1750:
-                self.text_render.visible = False
-                self.icon.visible = False
-            elif "Proxy" in self.raw_name and new_distance < 1750:
-                self.text_render.visible = False
-                self.icon.visible = False
-            else:
-                self.text_render.visible = True
-                self.icon.visible = True
+        now = time.monotonic()
+        if now - self.last_check[-1] >= 0.5:
+            if len(self.last_coords) >= 3 or len(self.last_check) >= 3:
+                self.last_coords.pop(0)
+                self.last_check.pop(0)
 
+            self.speed = self._get_speed(now)
+            self._get_directional_speed(now)
 
+            self.last_check.append(now)
+            self.last_coords.append(self.coords)
 
-
-            # Update the position of our circle and text
-            self.icon.x = self.screen_coords[0]
-            self.icon.y = self.screen_coords[1] + 80
-            self.text_render.x = self.screen_coords[0] + TEXT_OFFSET_X
-            self.text_render.y = self.screen_coords[1] + TEXT_OFFSET_Y + 100
-
-            # Update our text to reflect out new distance
-            self.distance = new_distance
-            self.text_str = self._built_text_string()
-            self.text_render.text = self.text_str
-
-        else:
-            # if it isn't on our screen, set it to invisible to save resources
-            self.text_render.visible = False
-            self.icon.visible = False

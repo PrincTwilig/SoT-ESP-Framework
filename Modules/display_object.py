@@ -26,6 +26,7 @@ class DisplayObject(metaclass=abc.ABCMeta):
         """
         self.rm = memory_reader
         self.coord_offset = OFFSETS.get('SceneComponent.ActorCoordinates')
+        self.rotation_offset = OFFSETS.get('SceneComponent.RelativeRotation')
 
     def _get_actor_id(self, address: int) -> int:
         """
@@ -66,6 +67,13 @@ class DisplayObject(metaclass=abc.ABCMeta):
         coordinate_dict = {"x": unpacked[0] / 100, "y": unpacked[1] / 100,
                            "z": unpacked[2] / 100}
         return coordinate_dict
+    
+    def _rotation_builder(self, root_comp_ptr: int, offset: int) -> dict:
+        actor_bytes = self.rm.read_bytes(root_comp_ptr + offset, 24)
+        unpacked = struct.unpack("<ffffff", actor_bytes)
+
+        rotation_dict = {'pitch': unpacked[3], 'yaw': unpacked[4], 'rotation': unpacked[5]}
+        return rotation_dict
 
     @abc.abstractmethod
     def update(self, my_coords):

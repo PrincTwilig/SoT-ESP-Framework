@@ -1,19 +1,16 @@
-"""
-@Author https://github.com/DougTheDruid
-@Source https://github.com/DougTheDruid/SoT-ESP-Framework
-For community support, please contact me on Discord: DougTheDruid#2784
-"""
-
+import math
 import struct
 import logging
 from memory_helper import ReadMemory
-from mapping import ship_keys, waters, hull_keys
-from helpers import OFFSETS, CONFIG, logger
+from mapping import ship_keys, waters, hull_keys, cannons_keys
+from helpers import OFFSETS, CONFIG, logger, calculate_distance
 from Modules.ship import Ship
 from Modules.crews import Crews
 from Modules.sink import Sink
 from Modules.holes import Holes
 from Modules.players import Player
+from Modules.cannons import Cannons
+from Modules.seagull import Seagull
 
 
 class SoTMemoryReader:
@@ -70,13 +67,17 @@ class SoTMemoryReader:
         self.my_coords = self._coord_builder(self.u_local_player)
         self.my_coords['fov'] = 90
 
-        self.halls = 0
-
         self.actor_name_map = {}
         self.server_players = []
         self.ships = []
+        self.cannons = []
+        self.seagulls = []
+        self.halls_data = []
+        self.sink_data = []
+        self.players = []
         self.display_objects = []
         self.crew_data = None
+        self.local_ship = False
 
     def _load_local_player(self) -> int:
         """
@@ -138,42 +139,9 @@ class SoTMemoryReader:
             coordinate_dict['fov'] = unpacked[7]
 
         return coordinate_dict
-
-
-    def read_actors(self):
-        """
-        Represents a full scan of every actor within our render distance.
-        Will create an object for each type of object we are interested in,
-        and store it in a class variable (display_objects).
-        Then our main game loop updates those objects
-        """
-        # On a full run, start by cleaning up all the existing text renders
-        for display_ob in self.display_objects:
-            try:
-                display_ob.text_render.delete()
-            except:
-                continue
-            try:
-                display_ob.icon.delete()
-            except:
-                continue
-
-        self.display_objects = []
-        self.update_my_coords()
-
-        self.ships = []
-
-        actor_raw = self.rm.read_bytes(self.u_level + 0xa0, 0xC)
-        actor_data = struct.unpack("<Qi", actor_raw)
-
-        # Credit @mogistink https://www.unknowncheats.me/forum/members/3434160.html
-        # One very large read for all the actors addresses to save us 1000+ reads every read_all
-        level_actors_raw = self.rm.read_bytes(actor_data[0], actor_data[1] * 8)
-
-        self.server_players = []
+    
+    def actor_info_generator(self, actor_data, level_actors_raw):
         for x in range(0, actor_data[1]):
-            # We start by getting the ActorID for a given actor, and comparing
-            # that ID to a list of "known" id's we cache in self.actor_name_map
             raw_name = ""
             actor_address = int.from_bytes(level_actors_raw[(x*8):(x*8+8)], byteorder='little', signed=False)
             actor_id = self.rm.read_int(
@@ -195,45 +163,91 @@ class SoTMemoryReader:
             if not raw_name:
                 continue
 
-            # If we have Ship ESP enabled in helpers.py, and the name of the
-            # actor is in our mapping.py ship_keys object, interpret the actor
-            # as a ship
-            if CONFIG.get('SHIPS_ENABLED') and raw_name in ship_keys:
-                ship = Ship(self.rm, actor_id, actor_address, self.my_coords,
-                            raw_name)
-                # if "Near" not in ship.name and ship.distance < 1720:
-                #     continue
-                # else:
-                self.ships.append({
-                    "bot": ship.is_bot,
-                    "distance": ship.distance,
-                    "image": ship.img_path
-                })
-                self.display_objects.append(ship)
+            yield raw_name, actor_address, actor_id
 
-            # If we have the crews data enabled in helpers.py and the name
-            # of the actor is CrewService, we create a class based on that Crew
-            # data to generate information about people on the server
-            # NOTE: This will NOT give us information on nearby players for the
-            # sake of ESP
-            if CONFIG.get('CREWS_ENABLED') and raw_name == "CrewService":
+
+
+    def read_actors(self):
+        """
+        Represents a full scan of every actor within our render distance.
+        Will create an object for each type of object we are interested in,
+        and store it in a class variable (display_objects).
+        Then our main game loop updates those objects
+        """
+
+        self.update_my_coords()
+
+        actor_raw = self.rm.read_bytes(self.u_level + 0xa0, 0xC)
+        actor_data = struct.unpack("<Qi", actor_raw)
+
+        level_actors_raw = self.rm.read_bytes(actor_data[0], actor_data[1] * 8)
+
+        self.server_players = []
+        self.local_ship = None
+        self.display_objects = []
+
+        for raw_name, actor_address, actor_id in self.actor_info_generator(actor_data, level_actors_raw):
+
+            if raw_name == "BP_Cannon_ShipPartMMC_C":
+                cannon = Cannons(self.rm, actor_id, actor_address, self.my_coords, raw_name, self.player_controller)
+                if cannon.address not in [actor.address for actor in self.cannons]:
+                    existing_actor_ids = [c.actor_id for c in self.cannons]
+                    while cannon.actor_id in existing_actor_ids:
+                        cannon.actor_id += 1
+                    self.cannons.append(cannon)
+
+
+            elif raw_name == "BP_Seagull01_8POI_C" or raw_name == "BP_Seagull01_32POI_Circling_Shipwreck_C" or raw_name == "BP_Seagull01_8POI_LostShipments_C" or raw_name == "BP_Seagulls_Barrels_BarrelsOfPlenty_C" or raw_name == "BP_BuoyantCannonballBarrel_LockedToWater_C" or raw_name == "BP_Seagulls_Barrels_C":
+                seagull = Seagull(self.rm, actor_id, actor_address, self.my_coords, raw_name)
+                if seagull.address not in[actor.address for actor in self.seagulls]:
+                    existing_actor_ids = [c.actor_id for c in self.seagulls]
+                    while seagull.actor_id in existing_actor_ids:
+                        seagull.actor_id += 1
+                    self.seagulls.append(seagull)
+
+                    
+
+
+            elif CONFIG.get('SHIPS_ENABLED') and raw_name in ship_keys:
+                ship = Ship(self.rm, actor_id, actor_address, self.my_coords, raw_name)
+                if ship.address not in [actor.address for actor in self.ships]:
+                    existing_actor_ids = [s.actor_id for s in self.ships]
+                    while ship.actor_id in existing_actor_ids:
+                        ship.actor_id += 1
+                    self.ships.append(ship)
+
+            elif CONFIG.get('CREWS_ENABLED') and raw_name == "CrewService":
                 self.crew_data = Crews(self.rm, actor_id, actor_address)
 
-            if CONFIG.get('WATER_PERCENTAGE') and raw_name in waters:
-                self.sink_data = Sink(self.rm, actor_id, actor_address, self.my_coords)
-                self.display_objects.append(self.sink_data)
+            elif CONFIG.get('WATER_PERCENTAGE') and raw_name in waters:
+                sink = Sink(self.rm, actor_id, actor_address, self.my_coords)
+                if sink.actor_id not in [actor.actor_id for actor in self.sink_data]:
+                    self.sink_data.append(sink)
 
-            if CONFIG.get('HULLS_COUNT') and raw_name in hull_keys:
-                hole = Holes(self.rm, actor_id, actor_address, self.my_coords)
-                print(self.halls)
-                self.halls = hole.is_active_hall()
+            elif CONFIG.get('HULLS_COUNT') and raw_name in hull_keys:
+                holes = Holes(self.rm, actor_id, actor_address, self.my_coords)
+                if holes.actor_id not in [actor.actor_id for actor in self.halls_data]:
+                    self.halls_data.append(holes)
 
-            if CONFIG.get('PLAYER_CHARACTER') and raw_name == "BP_PlayerPirate_C":
+            elif CONFIG.get('PLAYER_CHARACTER') and raw_name == "BP_PlayerPirate_C":
                 player = Player(self.rm, actor_id, actor_address, self.my_coords, raw_name)
-                self.display_objects.append(player)
+                if player.actor_id not in [actor.actor_id for actor in self.players]:
+                    self.players.append(player)
+
+            else:
+                continue
+
+            for ship in self.ships:
+                if ship.distance < 20:
+                    self.local_ship = ship
+                for sink in self.sink_data:
+                    if calculate_distance(ship.coords, sink.coords) <= 10:
+                        ship.add_sink_data(sink)
+                for hall in self.halls_data:
+                    if calculate_distance(ship.coords, hall.coords) <= 10:
+                        ship.add_halls_data(hall)
 
 
-
-
-
-
+            for actor in self.ships + self.sink_data + self.halls_data + self.players + self.cannons + self.seagulls:
+                if actor.actor_id not in [actorr.actor_id for actorr in self.display_objects]:
+                    self.display_objects.append(actor)

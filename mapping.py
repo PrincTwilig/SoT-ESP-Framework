@@ -82,3 +82,11 @@ hulls = {
 }
 
 hull_keys = set(hulls.keys())
+
+cannons = {
+    "BP_Cannon_ShipPartMMC_C": {
+        "Name": "Onboard Cannon"
+    }
+}
+
+cannons_keys = set(cannons.keys())

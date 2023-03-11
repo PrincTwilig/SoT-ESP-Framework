@@ -1,15 +1,12 @@
-"""
-@Author https://github.com/DougTheDruid
-@Source https://github.com/DougTheDruid/SoT-ESP-Framework
-For community support, please contact me on Discord: DougTheDruid#2784
-"""
-from base64 import b64decode
-import pyglet
+import pyglet, subprocess
 from threading import Thread
 from pyglet.text import Label
+from pyglet.sprite import Sprite
+from pyglet.image import SolidColorImagePattern
 from pyglet.gl import Config
 from helpers import SOT_WINDOW, SOT_WINDOW_H, SOT_WINDOW_W, main_batch, \
-    version, logger
+    version, logger, object_to_screen, is_game_focused, calculate_distance
+from visual_helper import get_ship_list_string
 from sot_hack import SoTMemoryReader
 
 
@@ -18,144 +15,216 @@ FPS_TARGET = 60
 
 # See explanation in Main, toggle for a non-graphical debug
 DEBUG = False
+SEAGULLS = True
 
 # Pyglet clock used to track time via FPS
 clock = pyglet.clock.Clock()
 
 
 def generate_all(_):
-    """
-    Triggers an entire read_actors call in our SoT Memory Reader. Will
-    re-populate all of the display objects if something entered the screen
-    or render distance.
-    """
     thread = Thread(target=smr.read_actors)
     thread.start()
-    # smr.read_actors()
+
+def run_subprocess():
+    subprocess.run('SotExternalESPv3.5.2.exe')
 
 
 def update_graphics(_):
-    """
-    Our main graphical loop which updates all of our "interesting" items.
-    During a "full run" (update_all()), a list of the objects near us and we
-    care about is generated. Each of those objects has a ".update()" method
-    we use to re-poll data for that item (required per display_object.py)
-    """
-    # Update our players coordinate information
+
     smr.update_my_coords()
 
-    # Initialize a list of items which are no longer valid in this loop
     to_remove = []
 
-    # For each actor that is stored from the most recent run of read_actors
     for actor in smr.display_objects:
-        # Call the update function within the actor object
         actor.update(smr.my_coords)
 
-        # If the actor isn't the actor we expect (per .update), prepare to nuke
         if actor.to_delete:
             to_remove.append(actor)
 
-    # Clean up any items which arent valid anymore
     for removable in to_remove:
         smr.display_objects.remove(removable)
+        for arr in [smr.ships, smr.sink_data, smr.halls_data, smr.players, smr.cannons, smr.seagulls]:
+            if removable in arr:
+                arr.remove(removable)
+                break
 
 
 if __name__ == '__main__':
     logger.info(
-        b64decode("RG91Z1RoZURydWlkJ3MgRVNQIEZyYW1ld29yayBTdGFydGluZw==").decode("utf-8")
+        "SOTESP Started"
     )
     logger.info(f"Hack Version: {version}")
 
-    # Initialize our SoT Hack object, and do a first run of reading actors
     smr = SoTMemoryReader()
 
-    # Custom Debug mode for using a literal python interpreter debugger
-    # to validate our fields. Does not generate a GUI.
-    if DEBUG:
-        while True:
-            smr.read_actors()
-
-    # You may want to add/modify this custom config per the pyglet docs to
-    # disable vsync or other options: https://tinyurl.com/45tcx6eu
     config = Config(double_buffer=True, depth_size=24, alpha_size=8)
 
-    # Create an overlay window with Pyglet at the same size as our SoT Window
+
     window = pyglet.window.Window(SOT_WINDOW_W, SOT_WINDOW_H,
                                   vsync=False, style='overlay', config=config,
                                   caption="Vlads hack")
-    hwnd = window._hwnd  # pylint: disable=protected-access
+    ships = []
+    players = []
+    seagull_sprites = {}
+    seagulls = []
+    speed_x = 0
+    speed_y = 0
 
-    # Move our window to the same location that our SoT Window is at
+
     window.set_location(SOT_WINDOW[0], SOT_WINDOW[1])
 
     @window.event
     def on_draw():
-        """
-        The event which our window uses to determine what to draw on the
-        screen. First clears the screen, then updates our player count, then
-        draws both our batch (think of a canvas) & fps display
-        """
         window.clear()
 
-        # Update our player count Label & crew list
-        if smr.crew_data:
-
-            player_count.text = f"Player Count: {smr.crew_data.total_players}"
-            crew_list.text = smr.crew_data.crew_str
+        
+        global speed_x
+        global speed_y
 
 
-        halls.text = "" if smr.halls == 0 else str(smr.halls)
+        if smr.ships:
+            ships_list.text = get_ship_list_string(smr.ships)
+        
+        if smr.local_ship and smr.local_ship.sink_data:
+            health_bar.scale_x = smr.local_ship.sink_data.water_info
 
-        ships = ''
-        for ship in smr.ships:
-            if ship['distance'] > 100 and not ship['bot']:
-                ships += f"{'S ' if 'Sloop' in ship['image'] else 'B ' if 'Brigantine' in ship['image'] else 'G '}Ship - {ship['distance']}m \n"
-        ships_list.text = ships
+            health_bar_frame.visible = True
+            health_bar.visible = True
+
+            if smr.local_ship.sink_data.water_info > 0.85:
+                health_bar_frame.visible = False
+                health_bar.visible = False
+            elif smr.local_ship.sink_data.water_info > 0.6:
+                health_bar.color = (0,255,0)
+            elif smr.local_ship.sink_data.water_info > 0.3:
+                health_bar.color = (255, 255, 0)
+            else:
+                health_bar.color = (255, 255, 0)
+
+            if smr.local_ship.halls:
+                current_ship_halls.text = str(smr.local_ship.halls.hulls_count if smr.local_ship.halls.hulls_count else "")
+            else:
+                current_ship_halls.text = ''
+        else:
+            health_bar_frame.visible = False
+            health_bar.visible = False
+            current_ship_halls.text = ''
 
 
-        # Draw our main batch & FPS counter at the bottom left
-        main_batch.draw()
-        ## fps_display.draw()
+        for cannon in smr.cannons:
+            if cannon.is_on_cannon:
+                
+                ships = [ship for ship in smr.ships if ship != smr.local_ship]
 
-    # We schedule an "update all" to scan all actors every 5seconds
+                if ships:
+                    closest_ship = min(ships, key=lambda obj: obj.distance)
+
+                    if closest_ship.screen_coords and closest_ship.distance < 460:
+                        try:
+                            time_to_hit_buf = cannon.get_time_to_hit(closest_ship.distance)
+                            predicted_coords_buf = closest_ship.predict_coords(time_to_hit_buf)
+                            time_to_hit = cannon.get_time_to_hit(calculate_distance(smr.my_coords, predicted_coords_buf))
+                            predicted_coords = closest_ship.predict_coords(time_to_hit)
+                        except:
+                            continue
+
+                        if smr.local_ship and (smr.local_ship.speed_x != 0 or smr.local_ship.speed_y != 0):
+                            speed_x = smr.local_ship.speed_x
+                            speed_y = smr.local_ship.speed_y
+
+
+                        shoot_coords = {'x': predicted_coords['x'] - speed_x * time_to_hit, 'y': predicted_coords['y'] - speed_y * time_to_hit, 'z': predicted_coords['z']}
+                        screen_coords = object_to_screen(smr.my_coords, shoot_coords)
+                        
+                        if screen_coords:
+                            shot_line.visible = True
+                            shot_line.y = ((SOT_WINDOW_H / 2) - (shot_line.height / 2)) + (calculate_distance(smr.my_coords, shoot_coords) - cannon.shot_distance) + (shoot_coords['z'] - smr.my_coords['z'])
+                            shot_line.x = screen_coords[0] - (shot_line.width / 2)
+
+                    else:
+                        shot_line.visible = False
+                    break
+                else:
+                    shot_line.visible = False
+            else:
+                shot_line.visible = False
+
+
+        # Loop through each seagull in smr.seagulls
+        for seagull in smr.seagulls:
+            # Check if seagull already has a sprite
+            if seagull.address in seagull_sprites and SEAGULLS:
+                # Update the sprite's coordinates
+                if seagull.screen_coords:
+                    seagull_sprites[seagull.address].x = seagull.screen_coords[0]
+                    seagull_sprites[seagull.address].y = seagull.screen_coords[1]
+                    seagull_sprites[seagull.address].text = f"[{seagull.distance}]"
+                    seagull_sprites[seagull.address].visible = True
+                    if seagull.raw_name == "BP_BuoyantCannonballBarrel_LockedToWater_C":
+                        seagull_sprites[seagull.address].color = (255,0,0,255)
+                    elif seagull.raw_name == "BP_Seagull01_32POI_Circling_Shipwreck_C":
+                        seagull_sprites[seagull.address].color = (0,0,255,255)
+                    elif seagull.raw_name == "BP_Seagulls_Barrels_BarrelsOfPlenty_C":
+                        seagull_sprites[seagull.address].color = (255,255,0,255)
+                    else:
+                        seagull_sprites[seagull.address].color = (255,255,255,255)
+                else:
+                    seagull_sprites[seagull.address].visible = False
+            else:
+                if seagull.screen_coords:
+                    seagull_sprite = Label(f"[{seagull.distance}]", x=seagull.screen_coords[0], y=seagull.screen_coords[1],
+                        batch=main_batch, font_size=10, color=(255,255,255,255))
+                    seagull_sprite.visible = False
+                    seagull_sprites[seagull.address] = seagull_sprite
+
+        # Loop through each seagull in seagull_sprites
+        for address, seagull_sprite in list(seagull_sprites.items()):
+            # Check if the seagull is not in smr.seagulls
+            if address not in [actor.address for actor in smr.seagulls]:
+                # Remove the seagull and its sprite from the dictionary
+                seagull_sprites.pop(address)
+
+        seagulls = list(seagull_sprites.values())
+
+
+        if is_game_focused():
+            main_batch.draw()
+
+
+
     pyglet.clock.schedule_interval(generate_all, 5)
-
-    # We schedule a check to make sure the game is still running every 3 seconds
     pyglet.clock.schedule_interval(smr.rm.check_process_is_active, 3)
-
-    # We schedule a basic graphics load which is responsible for updating
-    # the actors we are interested in (from our generate_all). Runs as fast as possible
     pyglet.clock.schedule(update_graphics)
 
-    # Adds an FPS counter at the bottom left corner of our pyglet window
-    # Note: May not translate to actual FPS, but rather FPS of the program
-    ##  fps_display = pyglet.window.FPSDisplay(window)
+    ships_list = Label("", x=SOT_WINDOW_W * 0.91, y=SOT_WINDOW_H * 0.97,
+                       batch=main_batch, width=150,
+                       multiline=True, font_name='Times New Roman')
 
-    # Our base player_count label in the top-right of our screen. Updated
-    # in on_draw(). Use a default of "Initializing", which will update once the
-    # hack is actually running
-    player_count = Label("...Initializing Framework...",
-                         x=SOT_WINDOW_W * 0.007,
-                         y=SOT_WINDOW_H * 0.94, batch=main_batch, font_name='Times New Roman')
 
-    # The label for showing all players on the server under the count
-    # This purely INITIALIZES it does not inherently update automatically
-    # pylint: disable=using-constant-test
-    crew_list = Label("", x=SOT_WINDOW_W * 0.004,
-                      y=(SOT_WINDOW_H-25) * 0.94, batch=main_batch, width=300,
-                      multiline=True, font_name='Times New Roman')
-    # Note: The width of 300 is the max pixel width of a single line
-    # before auto-wrapping the text to the next line. Updated in on_draw()
 
-    halls = Label("",
-                    x=SOT_WINDOW_W * 0.492, y=SOT_WINDOW_H * 0.008,
+    current_ship_halls = Label("", x=SOT_WINDOW_W * 0.492, y=SOT_WINDOW_H * 0.008,
                     batch=main_batch, font_size=40, color=(255,0,0,255))
 
-    ships_list = Label("", x=SOT_WINDOW_W * 0.91,
-                      y=SOT_WINDOW_H * 0.97, batch=main_batch, width=130,
-                      multiline=True, font_name='Times New Roman')
+    health_bar_frame = Sprite(SolidColorImagePattern((0, 0, 0, 255)).create_image(500, 30), batch=main_batch,
+                              x=SOT_WINDOW_W / 3,
+                              y=SOT_WINDOW_H / 22)
+    health_bar_frame.visible = False
 
-    # Runs our application, targeting a specific refresh rate (1/60 = 60fps)
+    health_bar = Sprite(SolidColorImagePattern((255, 255, 255, 255)).create_image(500, 30), batch=main_batch,
+                        x=SOT_WINDOW_W / 3, y=SOT_WINDOW_H / 22, z=1)
+    health_bar.visible = False
+
+    
+    image = pyglet.image.load('./icons/scope.png')
+    shot_line = Sprite(image, batch=main_batch,
+                        x=SOT_WINDOW_W / 2, y=SOT_WINDOW_H / 2)
+    shot_line.scale = 0.17
+    shot_line.visible = False
+
+
+
+    Thread(target=run_subprocess).start()
     pyglet.app.run(interval=1/FPS_TARGET)
-    # Note - ***Nothing past here will execute as app.run() is a loop***
+
+
+

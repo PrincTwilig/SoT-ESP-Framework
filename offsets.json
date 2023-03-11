@@ -11,6 +11,8 @@
   "PlayerController.CameraManager": 1112,
   "PlayerState.PlayerName": 976,
   "SceneComponent.ActorCoordinates": 300,
+  "ACannon.ProjectileSpeed": 1468,
+  "ACannon.ProjectileGravityScale": 1472,
   "World.OwningGameInstance": 448,
   "World.PersistentLevel": 48,
   "ShipInternalWater.WaterAmount": 1052,
