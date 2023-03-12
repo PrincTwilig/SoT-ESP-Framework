@@ -102,13 +102,13 @@ def object_to_screen(player: dict, actor: dict) -> tuple:
 
         x = screen_center_x + v_transformed[0] * (screen_center_x / tmp_fov) \
             / v_transformed[2]
-        if x > SOT_WINDOW_W+150 or x < -150:
-            return False
+        # if x > SOT_WINDOW_W+150 or x < -150:
+        #     return False
         y = screen_center_y - v_transformed[1] * \
             (screen_center_x / tmp_fov) \
             / v_transformed[2]
-        if y > SOT_WINDOW_H+150 or y < -150:
-            return False
+        # if y > SOT_WINDOW_H+150 or y < -150:
+        #     return False
 
         return int(x), int(SOT_WINDOW_H - y)
     except Exception as w2s_error:

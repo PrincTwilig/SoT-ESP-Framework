@@ -95,7 +95,7 @@ class Ship(DisplayObject):
 
         now = time.monotonic()
         if now - self.last_check[-1] >= 0.5:
-            if len(self.last_coords) >= 3 or len(self.last_check) >= 3:
+            if len(self.last_coords) >= 2 or len(self.last_check) >= 2:
                 self.last_coords.pop(0)
                 self.last_check.pop(0)
 
@@ -104,4 +104,5 @@ class Ship(DisplayObject):
 
             self.last_check.append(now)
             self.last_coords.append(self.coords)
+
 

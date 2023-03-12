@@ -1,4 +1,4 @@
-import pyglet, subprocess
+import pyglet, subprocess, time
 from threading import Thread
 from pyglet.text import Label
 from pyglet.sprite import Sprite
@@ -72,9 +72,8 @@ if __name__ == '__main__':
                                   vsync=False, style='overlay', config=config,
                                   caption="Vlads hack")
 
+    sunken_ships = {}
     seagull_sprites = {}
-    speed_x = 0
-    speed_y = 0
 
 
     window.set_location(SOT_WINDOW[0], SOT_WINDOW[1])
@@ -83,9 +82,6 @@ if __name__ == '__main__':
     def on_draw():
         window.clear()
 
-        
-        global speed_x
-        global speed_y
 
         smr.local_ship = False
         for ship in smr.data.ships:
@@ -133,40 +129,42 @@ if __name__ == '__main__':
 
         # cannon prediction system
         for cannon in smr.data.cannons:
-            if cannon.is_on_cannon:
+            if cannon.is_on_cannon and smr.local_ship and len(smr.data.ships) > 1:
                 
                 ships = [ship for ship in smr.data.ships if ship != smr.local_ship]
+                closest_ship = min(ships, key=lambda obj: obj.distance)
 
-                if ships:
-                    closest_ship = min(ships, key=lambda obj: obj.distance)
 
-                    if closest_ship.screen_coords and closest_ship.distance < 460:
+                if closest_ship.distance < 450:
+                    try:
+                        time_to_hit = cannon.get_time_to_hit(calculate_distance(smr.my_coords, closest_ship.coords))
+                        predicted_coords = closest_ship.predict_coords(time_to_hit)
+                    except:
+                        continue
+
+                    # try find predict coords position as close as possible by calculating distance
+                    for _ in range(5):
                         try:
-                            time_to_hit_buf = cannon.get_time_to_hit(closest_ship.distance)
-                            predicted_coords_buf = closest_ship.predict_coords(time_to_hit_buf)
-                            time_to_hit = cannon.get_time_to_hit(calculate_distance(smr.my_coords, predicted_coords_buf))
+                            time_to_hit = cannon.get_time_to_hit(calculate_distance(smr.my_coords, predicted_coords))
                             predicted_coords = closest_ship.predict_coords(time_to_hit)
                         except:
                             continue
 
-                        if smr.local_ship and (smr.local_ship.speed_x != 0 or smr.local_ship.speed_y != 0):
-                            speed_x = smr.local_ship.speed_x
-                            speed_y = smr.local_ship.speed_y
+                    cannon_ball_travel_x = smr.local_ship.speed_x * time_to_hit
+                    cannon_ball_travel_y = smr.local_ship.speed_y * time_to_hit
 
+                    shoot_coords = {'x': predicted_coords['x'] - cannon_ball_travel_x, 'y': predicted_coords['y'] - cannon_ball_travel_y, 'z': predicted_coords['z']}
+                    screen_coords = object_to_screen(smr.my_coords, shoot_coords)
+                    
+                    if screen_coords:
+                        shot_line.visible = True
+                        shot_line.y = ((SOT_WINDOW_H / 2) - (shot_line.height / 2)) + (calculate_distance(smr.my_coords, shoot_coords) - cannon.shot_distance) - 20
+                        shot_line.x = screen_coords[0] - (shot_line.width / 2)
 
-                        shoot_coords = {'x': predicted_coords['x'] - speed_x * time_to_hit, 'y': predicted_coords['y'] - speed_y * time_to_hit, 'z': predicted_coords['z']}
-                        screen_coords = object_to_screen(smr.my_coords, shoot_coords)
-                        
-                        if screen_coords:
-                            shot_line.visible = True
-                            shot_line.y = ((SOT_WINDOW_H / 2) - (shot_line.height / 2)) + (calculate_distance(smr.my_coords, shoot_coords) - cannon.shot_distance) + (shoot_coords['z'] - smr.my_coords['z'])
-                            shot_line.x = screen_coords[0] - (shot_line.width / 2)
-
-                    else:
-                        shot_line.visible = False
-                    break
                 else:
                     shot_line.visible = False
+
+                break
             else:
                 shot_line.visible = False
 
@@ -181,9 +179,7 @@ if __name__ == '__main__':
                     seagull_sprites[seagull.address].y = seagull.screen_coords[1]
                     seagull_sprites[seagull.address].text = f"[{seagull.distance}]"
                     seagull_sprites[seagull.address].visible = True
-                    if seagull.raw_name == "BP_BuoyantCannonballBarrel_LockedToWater_C":
-                        seagull_sprites[seagull.address].color = (255,0,0,255)
-                    elif seagull.raw_name == "BP_Seagull01_32POI_Circling_Shipwreck_C":
+                    if seagull.raw_name == "BP_Seagull01_32POI_Circling_Shipwreck_C":
                         seagull_sprites[seagull.address].color = (0,0,255,255)
                     elif seagull.raw_name == "BP_Seagulls_Barrels_BarrelsOfPlenty_C":
                         seagull_sprites[seagull.address].color = (255,255,0,255)
@@ -192,18 +188,54 @@ if __name__ == '__main__':
                 else:
                     seagull_sprites[seagull.address].visible = False
             else:
-                if seagull.screen_coords:
-                    seagull_sprite = Label(f"[{seagull.distance}]", x=seagull.screen_coords[0], y=seagull.screen_coords[1],
-                        batch=main_batch, font_size=10, color=(255,255,255,255))
-                    seagull_sprite.visible = False
-                    seagull_sprites[seagull.address] = seagull_sprite
+                seagull_sprite = Label(f"[{seagull.distance}]", x=-200, y=-200,
+                    batch=main_batch, font_size=10, color=(255,255,255,255))
+                seagull_sprite.visible = False
+                seagull_sprites[seagull.address] = seagull_sprite
 
-        # Loop through each seagull in seagull_sprites
-        for address, seagull_sprite in list(seagull_sprites.items()):
-            # Check if the seagull is not in smr.seagulls
+        for address in list(seagull_sprites.keys()):
             if address not in [actor.address for actor in smr.data.seagulls]:
-                # Remove the seagull and its sprite from the dictionary
                 seagull_sprites.pop(address)
+
+
+
+        # check for sunken ships and add them to list
+        for ship in smr.data.ships:
+
+            if ship.sink_data and ship.sink_data.water_info == 0 and ship.address not in [act for act in sunken_ships.keys()]:
+                ship_sprite = Label(f"[{ship.distance}]", x=0, y=0,
+                        batch=main_batch, font_size=10, color=(255,0,0,255))
+                ship_sprite.visible = False
+                sunken_ships[ship.address] = {'coords': ship.coords, 'sprite': ship_sprite, 'Dtime': time.monotonic()}
+
+        # update sunken ships position or delete
+        for address, ship in list(sunken_ships.items()):
+            distance = calculate_distance(smr.my_coords, ship['coords'])
+
+            if (time.monotonic() - ship['Dtime'] >= 60 and distance < 90) or time.monotonic() - ship['Dtime'] >= 360:
+                sunken_ships.pop(address)
+                continue
+
+            screen_coords = object_to_screen(smr.my_coords, ship['coords'])
+
+            if screen_coords:
+                ship['sprite'].x = screen_coords[0]
+                ship['sprite'].y = screen_coords[1]
+                ship['sprite'].text = f"[{distance}]"
+                ship['sprite'].visible = True
+            else:
+                ship['sprite'].visible = False
+
+
+
+        if DEBUG:
+            debug_list.text = ""
+            for actor in smr.display_objects:
+                if actor.debug_data:
+                    debug_list.text += f"{actor.__class__.__name__}:\n"
+                    for data in actor.debug_data:
+                        debug_list.text += f"{data}\n"
+                
 
 
         if is_game_focused():
@@ -214,6 +246,10 @@ if __name__ == '__main__':
     pyglet.clock.schedule_interval(generate_all, 5)
     pyglet.clock.schedule_interval(smr.rm.check_process_is_active, 3)
     pyglet.clock.schedule(update_graphics)
+
+    debug_list = Label("", x=SOT_WINDOW_W * 0.85, y=SOT_WINDOW_H * 0.7,
+                       batch=main_batch, width=300,
+                       multiline=True, font_name='Times New Roman')
 
     ships_list = Label("", x=SOT_WINDOW_W * 0.91, y=SOT_WINDOW_H * 0.97,
                        batch=main_batch, width=150,

@@ -104,9 +104,6 @@ seagulls = {
     "BP_Seagulls_Barrels_BarrelsOfPlenty_C": {
         "Name": "Regular seagulls"
     },
-    "BP_BuoyantCannonballBarrel_LockedToWater_C": {
-        "Name": "Cannon barrels"
-    },
     "BP_Seagulls_Barrels_C": {
         "Name": "Regular seagulls"
     }

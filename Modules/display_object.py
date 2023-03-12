@@ -35,6 +35,7 @@ class DisplayObject(metaclass=ABCMeta):
         self.screen_coords = object_to_screen(self.my_coords, self.coords)
 
 
+        self.debug_data = []
         self.to_delete = False
 
     def _get_actor_id(self, address: int) -> int:
